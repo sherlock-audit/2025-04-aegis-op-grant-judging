@@ -120,7 +120,7 @@ The collateral amount to be sent back to the user should be the equivalence in v
 Source: https://github.com/sherlock-audit/2025-04-aegis-op-grant-judging/issues/77 
 
 ## Found by 
-iamandreiski
+iamandreiski, vinica\_boy
 
 ### Summary
 
@@ -210,153 +210,12 @@ _No response_
 
 Include an admin controlled mechanism to be able to repurpose unused redeem funds as `_custodyTransferrableAssetFunds` or make a separate request funds flow which will track the amounts and enable redeem approvals (and if they get rejected, the funds get atomically repurposed). 
 
-# Issue M-2: The _checkMintRedeemLimit is not use properly in mint lead to update wrong amount 
-
-Source: https://github.com/sherlock-audit/2025-04-aegis-op-grant-judging/issues/328 
-
-## Found by 
-0xapple, Flare, MaslarovK, OpaBatyo, SafetyBytes, SamuelTroyDomi, SarveshLimaye, Weed0607, ck, covey0x07, durov, eLSeR17, farismaulana, farman1094, hildingr, leopoldflint, mahdifa, momentum, moray5554, newspacexyz, pkqs90, rudhra1749, tobi0x18, w33kEd, y4y, zhanmingjing
-
-### Summary
-
-There is function `AegisMinting::_checkMintRedeemLimit` which make sure the amount has not mint more than the limit of period, but that is not implemented or used properly which lead to check the price comparison with wrong amount or update the wrong mint amount
-
-
-### Root Cause
-
-This is the funciton which make sure the token is not mint more then the limit of period. Also update the mint amount every time mint called [here](https://github.com/sherlock-audit/2025-04-aegis-op-grant/blob/main/aegis-contracts/contracts/AegisMinting.sol#L785)
-```solidity
-`AegisMinting::_checkMintRedeemLimit`
-  function _checkMintRedeemLimit(MintRedeemLimit storage limits, uint256 yusdAmount) internal {
-    if (limits.periodDuration == 0 || limits.maxPeriodAmount == 0) {
-      return;
-    }
-    uint256 currentPeriodEndTime = limits.currentPeriodStartTime + limits.periodDuration;
-    if (
-      (currentPeriodEndTime >= block.timestamp && limits.currentPeriodTotalAmount + yusdAmount > limits.maxPeriodAmount) ||
-      (currentPeriodEndTime < block.timestamp && yusdAmount > limits.maxPeriodAmount)
-    ) {
-      revert LimitReached();
-    }
-    // Start new mint period
-    if (currentPeriodEndTime <= block.timestamp) {
-      limits.currentPeriodStartTime = uint32(block.timestamp);
-      limits.currentPeriodTotalAmount = 0;
-    }
-
-@>    limits.currentPeriodTotalAmount += yusdAmount;
-  }
-```
-
-Issue lies in how this function used in `AegisMinting::mint` 
-```solidity
-  function mint(
-    OrderLib.Order calldata order,
-    bytes calldata signature
-  ) external nonReentrant onlyWhitelisted(order.userWallet) onlySupportedAsset(order.collateralAsset) {
-    if (mintPaused) {
-      revert MintPaused();
-    }
-    if (order.orderType != OrderLib.OrderType.MINT) {
-      revert InvalidOrder();
-    }
-
- @>   _checkMintRedeemLimit(mintLimit, order.yusdAmount);
-```
-
-The value we are sending here is come from the off chain api call signed data [check here](https://github.com/Aegis-im/aegis-contracts/blob/master/docs/mint-redeem.md). But the price is coming here is not the exact price which is going to mint.
-
-There is another function `AegisMinting::_calculateMinYUSDAmount` in which we are taking price from chainlink, and creating another mint amount and using which ever is minimum between both yusdAmount (coming from offchain), chainlinkYUSDAmount (calculated now).
-```solidity
-  function _calculateMinYUSDAmount(address collateralAsset, uint256 collateralAmount, uint256 yusdAmount) internal view returns (uint256) {
-    (uint256 chainlinkPrice, uint8 feedDecimals) = _getAssetUSDPriceChainlink(collateralAsset);
-    if (chainlinkPrice == 0) {
-      return yusdAmount;
-    }
-
-    uint256 chainlinkYUSDAmount = Math.mulDiv(
-      collateralAmount * 10 ** (18 - IERC20Metadata(collateralAsset).decimals()),
-      chainlinkPrice,
-      10 ** feedDecimals
-    );
-
-    // Return smallest amount
-@>    return Math.min(yusdAmount, chainlinkYUSDAmount);
-  }
-```
-
-The price we are going to mint is `mintAmount` the minimum one.
-```solidity
-// AegisMinting::mint
-    // Take a fee, if it's applicable
-   @> (uint256 mintAmount, uint256 fee) = _calculateInsuranceFundFeeFromAmount(yusdAmount, mintFeeBP);
-    if (fee > 0) {
-      yusd.mint(insuranceFundAddress, fee);
-    }
-
-    IERC20(order.collateralAsset).safeTransferFrom(order.userWallet, address(this), order.collateralAmount);
- @>  yusd.mint(order.userWallet, mintAmount);
-    _custodyTransferrableAssetFunds[order.collateralAsset] += order.collateralAmount;
-
-    emit Mint(_msgSender(), order.collateralAsset, order.collateralAmount, mintAmount, fee);
-  }
-```
-
-
-### Internal Pre-conditions
-
-Chainlink must be returning price.
-
-### External Pre-conditions
-
-..
-
-### Attack Path
-
-Work on every call
-
-### Impact
-
-There is no surely we are always going to use the `yusdAmount` as the `chainlinkYUSDAmount` can be lower as well. But we are updating the state before even its confirming the mint amount.
-```solidity
-  function mint(
-    OrderLib.Order calldata order,
-    bytes calldata signature
-  ) external nonReentrant onlyWhitelisted(order.userWallet) onlySupportedAsset(order.collateralAsset) {
-    if (mintPaused) {
-      revert MintPaused();
-    }
-    if (order.orderType != OrderLib.OrderType.MINT) {
-      revert InvalidOrder();
-    }
-
-    _checkMintRedeemLimit(mintLimit, order.yusdAmount);
-```
-Which could lead to updating the wrong state value in `AegisMint::_checkMintRedeemLimit` not the actual mint amount which can be different.
-```solidity
-@>     limits.currentPeriodTotalAmount += yusdAmount;
-```
-So it could create discrepancy updating the higher amount currentPeriodTotalAmount when the mint amount can be lower. 
-There is 2 possible issue it would lead to
-1) Updated the higher then actual price
-2) Comparing the right mint amount with wrong updated amount value
-
-
-### PoC
-
-I believe it's so obvoius and self explaining so not providing POC right now, In case required happy to provide it 
-
-
-### Mitigation
-
-update the value after confirm the correct mint amount
-
-# Issue M-3: A whale adversary can grief the redeem functionality through redeem limit consumption 
+# Issue M-2: A whale adversary can grief the redeem functionality through redeem limit consumption 
 
 Source: https://github.com/sherlock-audit/2025-04-aegis-op-grant-judging/issues/497 
 
 ## Found by 
-0xDLG, 0xJoyBoy03, 0xNForcer, 0xbakeng, 0xc0ffEE, Ironsidesec, OpaBatyo, farman1094, gkrastenov, hildingr, iamandreiski, itsgreg, mahdikarimi, phoenixv110, ptsanev, vinica\_boy, xAlismx
+0xDLG, 0xJoyBoy03, 0xNForcer, 0xbakeng, 0xc0ffEE, Ikigai, Ironsidesec, OpaBatyo, farman1094, gkrastenov, hildingr, iamandreiski, itsgreg, mahdikarimi, phoenixv110, ptsanev, vinica\_boy, xAlismx
 
 ### Summary
 
