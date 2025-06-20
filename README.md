@@ -2,6 +2,8 @@
 
 Source: https://github.com/sherlock-audit/2025-04-aegis-op-grant-judging/issues/1 
 
+This issue has been acknowledged by the team but won't be fixed at this time.
+
 ## Found by 
 0xNForcer, 0xapple, 0xaxaxa, 0xeix, 0xpiken, 0xrex, Asher, Fade, FalseGenius, Kvar, QuillAudits\_Team, Ryonen, aslanbek, asui, bigbear1229, farman1094, gesha17, gkrastenov, harry, hildingr, iamandreiski, irorochadere, itsgreg, mahdifa, mgnfy.view, molaratai, moray5554, onthehunt, phoenixv110, s0x0mtee, shealtielanz, silver\_eth, t0x1c, turvec, vinica\_boy, w33kEd, x0x0
 
@@ -119,6 +121,8 @@ The collateral amount to be sent back to the user should be the equivalence in v
 
 Source: https://github.com/sherlock-audit/2025-04-aegis-op-grant-judging/issues/77 
 
+This issue has been acknowledged by the team but won't be fixed at this time.
+
 ## Found by 
 iamandreiski, vinica\_boy
 
@@ -213,6 +217,8 @@ Include an admin controlled mechanism to be able to repurpose unused redeem fund
 # Issue M-2: A whale adversary can grief the redeem functionality through redeem limit consumption 
 
 Source: https://github.com/sherlock-audit/2025-04-aegis-op-grant-judging/issues/497 
+
+This issue has been acknowledged by the team but won't be fixed at this time.
 
 ## Found by 
 0xDLG, 0xJoyBoy03, 0xNForcer, 0xbakeng, 0xc0ffEE, Ikigai, Ironsidesec, OpaBatyo, farman1094, gkrastenov, hildingr, iamandreiski, itsgreg, mahdikarimi, phoenixv110, ptsanev, vinica\_boy, xAlismx
